@@ -411,20 +411,16 @@ def solver_row_elimination(problem, linear, precond, initial_guess, use_petsc):
 
 def aug_dof_w_zero_bc(problem, dofs):
     aug_size = 0
-    for i in range(len(problem.node_inds_list)):
-        aug_size += len(problem.node_inds_list[i])
-    for i in range(len(problem.p_node_inds_list_A)):
-        aug_size += len(problem.p_node_inds_list_A[i])
+    aug_size += int(problem.node_inds_lens.sum())
+    aug_size += int(problem.p_node_inds_A_lens.sum())
     return np.hstack((dofs, np.zeros(aug_size)))
 
 
 def aug_dof_w_bc(problem, dofs, p_num_eps):
     aug_d = np.array([])
-    for i in range(len(problem.node_inds_list)):
-        aug_d = np.hstack((aug_d, p_num_eps * problem.vals_list[i]))
-    for i in range(len(problem.p_node_inds_list_A)):
-        aug_d = np.hstack(
-            (aug_d, np.zeros(len(problem.p_node_inds_list_A[i]))))
+    if problem.dirichlet_bc_info is not None:
+        aug_d2 = p_num_eps * np.concatenate(problem.vals_list)
+    aug_d = np.hstack((aug_d, np.zeros(int(problem.p_node_inds_A_lens.sum()))))
     return np.hstack((dofs, aug_d))
 
 
@@ -457,21 +453,16 @@ def compute_residual_lm(problem, res_vec, dofs_aug, p_num_eps):
     Saddle point problem energy function: L(u, lmbda) = E(u) + lmbda*(u - u0)
     with dL/d(u, lmbda) = res_vec_aug and dE/du = res_vec
     """
-    d_splits = np.cumsum(np.array([len(x)
-                                   for x in problem.node_inds_list])).tolist()
-    p_splits = np.cumsum(np.array([len(x) for x in problem.p_node_inds_list_A
-                                   ])).tolist()
-
-    d_lmbda_len = d_splits[-1] if len(d_splits) > 0 else 0
-    p_lmbda_len = p_splits[-1] if len(p_splits) > 0 else 0
+    d_lmbda_len = problem.d_splits[-1] if len(problem.d_splits) > 0 else 0
+    p_lmbda_len = problem.p_splits[-1] if len(problem.p_splits) > 0 else 0
 
     def get_Lagrangian():
 
         def split_lamda(lmbda):
             d_lmbda = lmbda[:d_lmbda_len]
             p_lmbda = lmbda[d_lmbda_len:]
-            d_lmbda_split = np.split(d_lmbda, d_splits)
-            p_lmbda_split = np.split(p_lmbda, p_splits)
+            d_lmbda_split = np.split(d_lmbda, problem.d_splits)
+            p_lmbda_split = np.split(p_lmbda, problem.p_splits)
             return d_lmbda_split, p_lmbda_split
 
         # @jax.jit
@@ -487,11 +478,11 @@ def compute_residual_lm(problem, res_vec, dofs_aug, p_num_eps):
                     (sol[problem.node_inds_list[i], problem.vec_inds_list[i]] -
                      problem.vals_list[i]))
 
-            for i in range(len(problem.p_node_inds_list_A)):
+            for i in range(len(problem.p_node_inds_A_list)):
                 lag += np.sum(p_lmbda_split[i] *
-                              (sol[problem.p_node_inds_list_A[i],
+                              (sol[problem.p_node_inds_A_list[i],
                                    problem.p_vec_inds_list[i]] -
-                               sol[problem.p_node_inds_list_B[i],
+                               sol[problem.p_node_inds_B_list[i],
                                    problem.p_vec_inds_list[i]]))
             return p_num_eps * lag
 
@@ -509,49 +500,48 @@ def compute_residual_lm(problem, res_vec, dofs_aug, p_num_eps):
 def get_A_fn_and_res_aug(problem, dofs_aug, res_vec, p_num_eps, use_petsc):
 
     def symmetry(I, J, V):
-        I_sym = onp.hstack((I, J))
-        J_sym = onp.hstack((J, I))
-        V_sym = onp.hstack((V, V))
+        I_sym = np.hstack((I, J))
+        J_sym = np.hstack((J, I))
+        V_sym = np.hstack((V, V))
         return I_sym, J_sym, V_sym
 
-    I_d = onp.array([])
-    J_d = onp.array([])
-    V_d = onp.array([])
+    I_d = np.array([])
+    J_d = np.array([])
+    V_d = np.array([])
     group_index = problem.num_total_dofs
     for i in range(len(problem.node_inds_list)):
         group_size = len(problem.node_inds_list[i])
-        I_d = onp.hstack((I_d, problem.vec * problem.node_inds_list[i] +
+        I_d = np.hstack((I_d, problem.vec * problem.node_inds_list[i] +
                           problem.vec_inds_list[i]))
-        J_d = onp.hstack((J_d, group_index + onp.arange(group_size)))
-        V_d = onp.hstack((V_d, p_num_eps * onp.ones(group_size)))
+        J_d = np.hstack((J_d, group_index + np.arange(group_size)))
+        V_d = np.hstack((V_d, p_num_eps * np.ones(group_size)))
         group_index += group_size
     I_d_sym, J_d_sym, V_d_sym = symmetry(I_d, J_d, V_d)
 
-    I_p = onp.array([])
-    J_p = onp.array([])
-    V_p = onp.array([])
-    for i in range(len(problem.p_node_inds_list_A)):
-        group_size = len(problem.p_node_inds_list_A[i])
-        I_p = onp.hstack((I_p, problem.vec * problem.p_node_inds_list_A[i] +
+    I_p = np.array([])
+    J_p = np.array([])
+    V_p = np.array([])
+    for i in range(len(problem.p_node_inds_A_list)):
+        group_size = len(problem.p_node_inds_A_list[i])
+        I_p = np.hstack((I_p, problem.vec * problem.p_node_inds_A_list[i] +
                           problem.p_vec_inds_list[i]))
-        J_p = onp.hstack((J_p, group_index + onp.arange(group_size)))
-        V_p = onp.hstack((V_p, p_num_eps * onp.ones(group_size)))
-        I_p = onp.hstack((I_p, problem.vec * problem.p_node_inds_list_B[i] +
+        J_p = np.hstack((J_p, group_index + np.arange(group_size)))
+        V_p = np.hstack((V_p, p_num_eps * np.ones(group_size)))
+        I_p = np.hstack((I_p, problem.vec * problem.p_node_inds_B_list[i] +
                           problem.p_vec_inds_list[i]))
-        J_p = onp.hstack((J_p, group_index + onp.arange(group_size)))
-        V_p = onp.hstack((V_p, -p_num_eps * onp.ones(group_size)))
+        J_p = np.hstack((J_p, group_index + np.arange(group_size)))
+        V_p = np.hstack((V_p, -p_num_eps * np.ones(group_size)))
         group_index += group_size
     I_p_sym, J_p_sym, V_p_sym = symmetry(I_p, J_p, V_p)
 
-    I = onp.hstack((problem.I, I_d_sym, I_p_sym))
-    J = onp.hstack((problem.J, J_d_sym, J_p_sym))
-    V = onp.hstack((problem.V, V_d_sym, V_p_sym))
+    I = np.hstack((problem.I, I_d_sym, I_p_sym))
+    J = np.hstack((problem.J, J_d_sym, J_p_sym))
+    V = np.hstack((problem.V, V_d_sym, V_p_sym))
 
-    logger.debug(f"Aug - Creating sparse matrix with scipy...")
-    A_sp_scipy_aug = scipy.sparse.csc_array((V, (I, J)),
-                                            shape=(group_index, group_index))
+
     # logger.info(f"Aug - Creating sparse matrix from scipy using JAX BCOO...")
-    A_sp_aug = BCOO.from_scipy_sparse(A_sp_scipy_aug).sort_indices()
+    # A_sp_aug = BCOO.from_scipy_sparse(A_sp_scipy_aug).sort_indices()  # old approach
+    A_sp_aug = BCOO((V, np.stack((I,J), axis=-1, dtype=np.integer)), shape=(group_index, group_index)).sort_indices()
 
     # logger.info(f"Aug - Global sparse matrix takes about {A_sp_aug.data.shape[0]*8*3/2**30} G memory to store.")
 
@@ -563,7 +553,9 @@ def get_A_fn_and_res_aug(problem, dofs_aug, res_vec, p_num_eps, use_petsc):
         return A_sp_aug @ dofs_aug
 
     if use_petsc:
-
+        logger.debug(f"Aug - Creating sparse matrix with scipy...")
+        A_sp_scipy_aug = scipy.sparse.csc_array((V, (I, J)),
+                                            shape=(group_index, group_index))
         A = PETSc.Mat().createAIJ(size=A_sp_scipy_aug.shape,
                                   csr=(A_sp_scipy_aug.indptr.astype(PETSc.IntType, copy=False),
                                        A_sp_scipy_aug.indices.astype(PETSc.IntType, copy=False),

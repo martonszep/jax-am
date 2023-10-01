@@ -101,8 +101,7 @@ class FEM:
         start = time.time()
         logger.debug(f"Computing shape function values, gradients, etc.")
 
-        self.shape_vals, self.shape_grads_ref, self.quad_weights = get_shape_vals_and_grads(
-            self.ele_type)
+        self.shape_vals, self.shape_grads_ref, self.quad_weights = get_shape_vals_and_grads(self.ele_type)
         self.face_shape_vals, self.face_shape_grads_ref, self.face_quad_weights, self.face_normals, self.face_inds \
         = get_face_shape_vals_and_grads(self.ele_type)
         self.num_quads = self.shape_vals.shape[0]
@@ -112,8 +111,12 @@ class FEM:
 
         self.node_inds_list, self.vec_inds_list, self.vals_list = self.Dirichlet_boundary_conditions(
             self.dirichlet_bc_info)
-        self.p_node_inds_list_A, self.p_node_inds_list_B, self.p_vec_inds_list = self.periodic_boundary_conditions(
-        )
+        self.node_inds_lens = onp.array(list(map(len, self.node_inds_list)))
+        self.d_splits = onp.cumsum(self.node_inds_lens)
+
+        self.p_node_inds_A_list, self.p_node_inds_B_list, self.p_vec_inds_list = self.periodic_boundary_conditions()
+        self.p_node_inds_A_lens = onp.array(list(map(len, self.p_node_inds_A_list)))
+        self.p_splits = onp.cumsum(self.p_node_inds_A_lens)
 
         # (num_cells, num_quads, num_nodes, 1, dim)
         self.v_grads_JxW = self.shape_grads[:, :, :,
