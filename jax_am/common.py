@@ -53,7 +53,7 @@ def box_mesh(Nx, Ny, Nz, domain_x, domain_y, domain_z):
     return out_mesh
 
 
-def rectangle_mesh(Nx, Ny, domain_x, domain_y):
+def rectangle_mesh(Nx, Ny, domain_x, domain_y, ele_type):
     dim = 2
     x = onp.linspace(0, domain_x, Nx + 1)
     y = onp.linspace(0, domain_y, Ny + 1)
@@ -66,8 +66,14 @@ def rectangle_mesh(Nx, Ny, domain_x, domain_y):
     inds2 = points_inds_xy[1:, :-1]
     inds3 = points_inds_xy[1:, 1:]
     inds4 = points_inds_xy[:-1, 1:]
-    cells = onp.stack((inds1, inds2, inds3, inds4), axis=dim).reshape(-1, 4)
-    out_mesh = meshio.Mesh(points=points, cells={'quad': cells})
+    if ele_type=='quad':
+        cells = onp.stack((inds1, inds2, inds3, inds4), axis=dim).reshape(-1, 4)
+        out_mesh = meshio.Mesh(points=points, cells={'quad': cells})
+    elif ele_type=='triangle':
+        cells1 = onp.stack((inds1, inds2, inds3), axis=dim).reshape(-1, 3)
+        cells2 = onp.stack((inds1, inds3, inds4), axis=dim).reshape(-1, 3)
+        cells = onp.concatenate([cells1, cells2])
+        out_mesh = meshio.Mesh(points=points, cells={'triangle': cells})
     return out_mesh
 
 
