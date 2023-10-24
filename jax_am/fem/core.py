@@ -817,14 +817,14 @@ class FEM:
         cells_sol = sol[self.cells]  # (num_cells, num_nodes, vec)
         # (num_cells, num_nodes, vec), (num_cells, num_nodes, vec, num_nodes, vec)
         weak_form, cells_jac = self.split_and_compute_cell(
-            cells_sol, onp, True, **internal_vars)
+            cells_sol, np, True, **internal_vars)
         V = cells_jac.reshape(-1)
         inds = (self.vec * self.cells[:, :, None] +
-                onp.arange(self.vec)[None, None, :]).reshape(
+                np.arange(self.vec)[None, None, :]).reshape(
                     len(self.cells), -1)
-        I = onp.repeat(inds[:, :, None], self.num_nodes * self.vec,
+        I = np.repeat(inds[:, :, None], self.num_nodes * self.vec,
                        axis=2).reshape(-1)
-        J = onp.repeat(inds[:, None, :], self.num_nodes * self.vec,
+        J = np.repeat(inds[:, None, :], self.num_nodes * self.vec,
                        axis=1).reshape(-1)
         self.I = I
         self.J = J
@@ -832,20 +832,20 @@ class FEM:
         del V, I, J
 
         if self.cauchy_bc_info is not None:
-            D_face, selected_cells = self.compute_face(cells_sol, onp, True)
+            D_face, selected_cells = self.compute_face(cells_sol, np, True)
             V_face = D_face.reshape(-1)
             inds_face = (self.vec * selected_cells[:, :, None] +
-                         onp.arange(self.vec)[None, None, :]).reshape(
+                         np.arange(self.vec)[None, None, :]).reshape(
                              len(selected_cells), -1)
-            I_face = onp.repeat(inds_face[:, :, None],
+            I_face = np.repeat(inds_face[:, :, None],
                                 self.num_nodes * self.vec,
                                 axis=2).reshape(-1)
-            J_face = onp.repeat(inds_face[:, None, :],
+            J_face = np.repeat(inds_face[:, None, :],
                                 self.num_nodes * self.vec,
                                 axis=1).reshape(-1)
-            self.I = onp.hstack((self.I, I_face))
-            self.J = onp.hstack((self.J, J_face))
-            self.V = onp.hstack((self.V, V_face))
+            self.I = np.hstack((self.I, I_face))
+            self.J = np.hstack((self.J, J_face))
+            self.V = np.hstack((self.V, V_face))
 
         return self.compute_residual_vars_helper(sol, weak_form,
                                                  **internal_vars)
