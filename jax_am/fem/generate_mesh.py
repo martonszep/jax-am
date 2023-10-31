@@ -94,6 +94,60 @@ def get_meshio_cell_type(ele_type):
         raise NotImplementedError
     return cell_type
 
+def rectangle_mesh(Nx, Ny, domain_x, domain_y, ele_type='TRI3', data_dir=''):
+    """Create structured rectangle mesh wit triangle or quad elements. 
+    Accepts ele_type = 'TRI3', 'TRI6', 'QUAD4' or 'QUAD8'
+
+    Args:
+        Nx (int): number of elements in x direction
+        Ny (int): number of elements in y direction
+        domain_x (float): length of the domain in x direction
+        domain_y (float): length of the domain in y direction
+        ele_type (str, optional): element type. Defaults to 'TRI3'.
+        data_dir (str, optional): data directory. Defaults to ''.
+    """
+
+    cell_type = get_meshio_cell_type(ele_type)
+    _, _, _, _, degree, _ = get_elements(ele_type)
+
+    data_dir = os.getcwd() if data_dir == '' else data_dir
+    msh_dir = os.path.join(data_dir, 'msh')
+    os.makedirs(msh_dir, exist_ok=True)
+    msh_file = os.path.join(msh_dir, 'rectangle.msh')
+
+    offset_x = 0.
+    offset_y = 0.
+    offset_z = 0.
+
+    gmsh.initialize()
+    gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)  # save in old MSH format
+    if cell_type.startswith('tri'):
+        Rec2d = False  # triangles
+    else:
+        Rec2d = True  # quads
+    p = gmsh.model.geo.addPoint(offset_x, offset_y, offset_z)
+    l = gmsh.model.geo.extrude([(0, p)], domain_x, 0, 0, [Nx], [1])
+    s = gmsh.model.geo.extrude([l[1]], 0, domain_y, 0, [Ny], [1], recombine=Rec2d)
+
+    gmsh.model.geo.synchronize()
+    gmsh.model.mesh.generate(2)
+    gmsh.model.mesh.setOrder(degree)
+    gmsh.write(msh_file)
+    gmsh.finalize()
+
+    mesh = meshio.read(msh_file)
+    points = mesh.points.astype(np.float32) # (num_total_nodes, dim)
+    cells =  mesh.cells_dict[cell_type] # (num_cells, num_nodes)
+    n_nodes_per_cell = cells.shape[1]
+
+    # Restructure the mesh to be consistent with the convention in JAX-AM
+    sort_idx = onp.lexsort((points[:, 1], points[:, 0]))
+    points = points[sort_idx]
+    cells = onp.select([cells == x for x in sort_idx], onp.arange(len(sort_idx)))
+    out_mesh = meshio.Mesh(points=points, cells={cell_type: cells})
+
+    return out_mesh
+
 
 def box_mesh(Nx, Ny, Nz, Lx, Ly, Lz, data_dir, ele_type='HEX8'):
     """References:
