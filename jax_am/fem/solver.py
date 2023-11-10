@@ -63,7 +63,7 @@ def jax_solve(problem, A_fn, b, x0, precond: bool, pc_matrix=None):
 
     # Verify convergence
     err = np.linalg.norm(A_fn(x) - b)
-    logger.debug(f"JAX scipy linear solve res = {err}")
+    # logger.debug(f"JAX scipy linear solve res = {err}")
 
     # Remarks(Tianju): assert seems to unexpectedly change the behavior of bicgstab (on my Linux machine).
     # Sometimes the solver simply fails without converging (it does converge without assert)
@@ -73,7 +73,7 @@ def jax_solve(problem, A_fn, b, x0, precond: bool, pc_matrix=None):
     # assert err < 0.1, f"JAX linear solver failed to converge with err = {err}"
     # x = np.where(err < 0.1, x, np.nan) # For assert purpose, some how this also affects bicgstab.
 
-    return x
+    return x, err
 
 
 ################################################################################
@@ -238,7 +238,7 @@ def linear_guess_solve(problem, A_fn, precond, use_petsc):
     if use_petsc:
         dofs = petsc_solve(A_fn, b, 'bcgsl', 'ilu')
     else:
-        dofs = jax_solve(problem, A_fn, b, b, precond)
+        dofs, err = jax_solve(problem, A_fn, b, b, precond)
     return dofs
 
 
@@ -255,7 +255,7 @@ def linear_incremental_solver(problem, res_vec, A_fn, dofs, precond,
         x0_1 = assign_bc(np.zeros_like(b), problem)
         x0_2 = copy_bc(dofs, problem)
         x0 = x0_1 - x0_2
-        inc = jax_solve(problem, A_fn, b, x0, precond)
+        inc, err = jax_solve(problem, A_fn, b, x0, precond)
 
     dofs = dofs + inc
 
@@ -433,7 +433,7 @@ def linear_guess_solve_lm(problem, A_aug, p_num_eps, use_petsc):
         x0 = np.zeros((problem.num_total_nodes, problem.vec))
         x0 = assign_bc(x0, problem)
         x0 = aug_dof_w_zero_bc(problem, x0)
-        dofs_aug = jax_solve(problem, A_aug, b_aug, x0, None)
+        dofs_aug, err = jax_solve(problem, A_aug, b_aug, x0, None)
     return dofs_aug
 
 
@@ -443,7 +443,7 @@ def linear_incremental_solver_lm(problem, res_vec_aug, A_aug, dofs_aug,
     if use_petsc:
         inc_aug = petsc_solve(A_aug, b_aug, 'minres', 'none')
     else:
-        inc_aug = jax_solve(problem, A_aug, b_aug, None, None)
+        inc_aug, err = jax_solve(problem, A_aug, b_aug, None, None)
     dofs_aug = dofs_aug + inc_aug
     return dofs_aug
 
@@ -586,10 +586,8 @@ def solver_lagrange_multiplier(problem, linear, use_petsc=True):
     Reference:
     https://ethz.ch/content/dam/ethz/special-interest/baug/ibk/structural-mechanics-dam/education/femI/Presentation.pdf
     """
-    logger.info(
-        f"Calling the lagrange multiplier solver for imposing Dirichlet B.C. and periodic B.C."
-    )
-    logger.info("Start timing")
+    # logger.info(f"Calling the lagrange multiplier solver for imposing Dirichlet B.C. and periodic B.C.")
+    # logger.info("Start timing")
     start = time.time()
     sol_shape = (problem.num_total_nodes, problem.vec)
     dofs = np.zeros(sol_shape).reshape(-1)
@@ -640,8 +638,8 @@ def solver_lagrange_multiplier(problem, linear, use_petsc=True):
     end = time.time()
     solve_time = end - start
     logger.info(f"Solve took {solve_time} [s]")
-    logger.debug(f"max of sol = {np.max(sol)}")
-    logger.debug(f"min of sol = {np.min(sol)}")
+    # logger.debug(f"max of sol = {np.max(sol)}")
+    # logger.debug(f"min of sol = {np.min(sol)}")
 
     return sol
 
@@ -908,7 +906,7 @@ def implicit_vjp(problem, sol, params, v, use_petsc):
 
     else:
         adjoint_linear_fn = get_vjp_contraint_fn_dofs(sol.reshape(-1))
-        adjoint = jax_solve(problem, adjoint_linear_fn, v.reshape(-1), None,
+        adjoint, err = jax_solve(problem, adjoint_linear_fn, v.reshape(-1), None,
                             True)
 
     vjp_linear_fn = get_vjp_contraint_fn_params(params, sol)
