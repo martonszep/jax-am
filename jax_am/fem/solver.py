@@ -598,10 +598,10 @@ def solver_lagrange_multiplier(problem, linear, use_petsc=True):
     else:
         p_num_eps = 1.
 
-    if not use_petsc:
-        logger.info(
-            f"Setting p_num_eps = {p_num_eps}. If periodic B.C. fails to be applied, consider modifying this parameter."
-        )
+    # if not use_petsc:
+    #     logger.info(
+    #         f"Setting p_num_eps = {p_num_eps}. If periodic B.C. fails to be applied, consider modifying this parameter."
+    #     )
 
     def newton_update_helper(dofs_aug):
         res_vec = problem.newton_update(
