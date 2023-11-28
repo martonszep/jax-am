@@ -1,4 +1,4 @@
-from pyfiglet import Figlet
+# from pyfiglet import Figlet
 
-f = Figlet(font='starwars')
-print(f.renderText('JAX - FEM'))
+# f = Figlet(font='starwars')
+# print(f.renderText('JAX - FEM'))

@@ -7,8 +7,8 @@ def setup_logger(name):
     logger.setLevel(logging.DEBUG)
 
     # Ignore TensorFlow and JAX warnings
-    logging.getLogger("tensorflow").setLevel(logging.ERROR)
-    logging.getLogger("jax").setLevel(logging.ERROR)
+    # logging.getLogger("tensorflow").setLevel(logging.ERROR)
+    # logging.getLogger("jax").setLevel(logging.ERROR)
 
     # Create a handler
     handler = logging.StreamHandler()
