@@ -53,27 +53,65 @@ def box_mesh(Nx, Ny, Nz, domain_x, domain_y, domain_z):
     return out_mesh
 
 
-def rectangle_mesh(Nx, Ny, domain_x, domain_y, ele_type):
+def rectangle_mesh(Nx, Ny, domain_x, domain_y, ele_type, periodic=False):
+    """Create structured rectangle mesh."""
     dim = 2
     x = onp.linspace(0, domain_x, Nx + 1)
     y = onp.linspace(0, domain_y, Ny + 1)
     xv, yv = onp.meshgrid(x, y, indexing='ij')
-    points_xy = onp.stack((xv, yv), axis=dim)
+    points_xy = onp.stack([xv, yv], axis=dim)
     points = points_xy.reshape(-1, dim)
     points_inds = onp.arange(len(points))
     points_inds_xy = points_inds.reshape(Nx + 1, Ny + 1)
-    inds1 = points_inds_xy[:-1, :-1]
-    inds2 = points_inds_xy[1:, :-1]
-    inds3 = points_inds_xy[1:, 1:]
-    inds4 = points_inds_xy[:-1, 1:]
+    
+    # if not periodic:
+    #     inds1 = points_inds_xy[:-1, :-1]
+    #     inds2 = points_inds_xy[1:, :-1]
+    #     inds3 = points_inds_xy[1:, 1:]
+    #     inds4 = points_inds_xy[:-1, 1:]
+    # else:
+    #     xv = onp.stack([onp.cos(2*onp.pi/domain_x*points[:,0]), onp.sin(2*onp.pi/domain_x*points[:,0])], axis=1)
+    #     yv = onp.stack([onp.cos(2*onp.pi/domain_y*points[:,1]), onp.sin(2*onp.pi/domain_y*points[:,1])], axis=1)
+    #     points = onp.concatenate([xv, yv], axis=1)
+
+    #     inds1 = points_inds_xy
+    #     inds2 = onp.roll(points_inds_xy, shift=-1, axis=0)
+    #     inds3 = onp.roll(inds2, shift=-1, axis=1)
+    #     inds4 = onp.roll(points_inds_xy, shift=-1, axis=1)
+
     if ele_type=='quad':
+        inds1 = points_inds_xy[:-1, :-1]
+        inds2 = points_inds_xy[1:, :-1]
+        inds3 = points_inds_xy[1:, 1:]
+        inds4 = points_inds_xy[:-1, 1:]
         cells = onp.stack((inds1, inds2, inds3, inds4), axis=dim).reshape(-1, 4)
         out_mesh = meshio.Mesh(points=points, cells={'quad': cells})
     elif ele_type=='triangle':
+        inds1 = points_inds_xy[:-1, :-1]
+        inds2 = points_inds_xy[1:, :-1]
+        inds3 = points_inds_xy[1:, 1:]
+        inds4 = points_inds_xy[:-1, 1:]
         cells1 = onp.stack((inds1, inds2, inds3), axis=dim).reshape(-1, 3)
         cells2 = onp.stack((inds1, inds3, inds4), axis=dim).reshape(-1, 3)
         cells = onp.concatenate([cells1, cells2])
         out_mesh = meshio.Mesh(points=points, cells={'triangle': cells})
+    elif ele_type=='triangle6':
+        assert Nx%2==0 and Ny%2==0, "Nx and Ny must be even for triangle6!"
+        inds1 = points_inds_xy[:-2:2, :-2:2]
+        inds2 = points_inds_xy[1:-1:2, :-2:2]
+        inds3 = points_inds_xy[2::2, :-2:2]
+        inds4 = points_inds_xy[:-2:2, 1:-1:2]
+        inds5 = points_inds_xy[1:-1:2, 1:-1:2]
+        inds6 = points_inds_xy[2::2, 1:-1:2]
+        inds7 = points_inds_xy[:-2:2, 2::2]
+        inds8 = points_inds_xy[1:-1:2, 2::2]
+        inds9 = points_inds_xy[2::2, 2::2]
+        cells1 = onp.stack((inds1, inds3, inds9, inds2, inds6,  inds5), axis=dim).reshape(-1, 6)
+        cells2 = onp.stack((inds1, inds9, inds7, inds5, inds8,  inds4), axis=dim).reshape(-1, 6)
+        cells = onp.concatenate([cells1, cells2])
+        out_mesh = meshio.Mesh(points=points, cells={'triangle6': cells})
+    else:
+        raise NotImplementedError
     return out_mesh
 
 
