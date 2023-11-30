@@ -190,7 +190,7 @@ class FEM:
         nanson_scale : onp.ndarray
             (num_selected_faces, num_face_quads)
         """
-        physical_coos = onp.take(self.points, self.cells,
+        physical_coos = np.take(self.points, self.cells,
                                  axis=0)  # (num_cells, num_nodes, dim)
         selected_coos = physical_coos[
             boundary_inds[:, 0]]  # (num_selected_faces, num_nodes, dim)
@@ -202,13 +202,13 @@ class FEM:
 
         # (num_selected_faces, 1, num_nodes, dim, 1) * (num_selected_faces, num_face_quads, num_nodes, 1, dim)
         # (num_selected_faces, num_face_quads, num_nodes, dim, dim) -> (num_selected_faces, num_face_quads, dim, dim)
-        jacobian_dx_deta = onp.sum(
+        jacobian_dx_deta = np.sum(
             selected_coos[:, None, :, :, None] *
             selected_f_shape_grads_ref[:, :, :, None, :],
             axis=2)
-        jacobian_det = onp.linalg.det(
+        jacobian_det = np.linalg.det(
             jacobian_dx_deta)  # (num_selected_faces, num_face_quads)
-        jacobian_deta_dx = onp.linalg.inv(
+        jacobian_deta_dx = np.linalg.inv(
             jacobian_dx_deta)  # (num_selected_faces, num_face_quads, dim, dim)
 
         # (1, num_face_quads, num_nodes, 1, dim) @ (num_selected_faces, num_face_quads, 1, dim, dim)
@@ -219,7 +219,7 @@ class FEM:
 
         # (num_selected_faces, 1, 1, dim) @ (num_selected_faces, num_face_quads, dim, dim)
         # (num_selected_faces, num_face_quads, 1, dim) -> (num_selected_faces, num_face_quads)
-        nanson_scale = onp.linalg.norm(
+        nanson_scale = np.linalg.norm(
             (selected_f_normals[:, None, None, :] @ jacobian_deta_dx)[:, :,
                                                                       0, :],
             axis=-1)
@@ -233,12 +233,12 @@ class FEM:
 
         Returns
         -------
-        physical_quad_points : onp.ndarray
+        physical_quad_points : np.ndarray
             (num_cells, num_quads, dim)
         """
-        physical_coos = onp.take(self.points, self.cells, axis=0)
+        physical_coos = np.take(self.points, self.cells, axis=0)
         # (1, num_quads, num_nodes, 1) * (num_cells, 1, num_nodes, dim) -> (num_cells, num_quads, dim)
-        physical_quad_points = onp.sum(self.shape_vals[None, :, :, None] *
+        physical_quad_points = np.sum(self.shape_vals[None, :, :, None] *
                                        physical_coos[:, None, :, :],
                                        axis=2)
         return physical_quad_points
@@ -248,7 +248,7 @@ class FEM:
 
         Parameters
         ----------
-        boundary_inds : List[onp.ndarray]
+        boundary_inds : List[np.ndarray]
             ndarray shape: (num_selected_faces, 2)
 
         Returns
@@ -256,14 +256,14 @@ class FEM:
         physical_surface_quad_points : ndarray
             (num_selected_faces, num_face_quads, dim)
         """
-        physical_coos = onp.take(self.points, self.cells, axis=0)
+        physical_coos = np.take(self.points, self.cells, axis=0)
         selected_coos = physical_coos[
             boundary_inds[:, 0]]  # (num_selected_faces, num_nodes, dim)
         selected_face_shape_vals = self.face_shape_vals[
             boundary_inds[:,
                           1]]  # (num_selected_faces, num_face_quads, num_nodes)
         # (num_selected_faces, num_face_quads, num_nodes, 1) * (num_selected_faces, 1, num_nodes, dim) -> (num_selected_faces, num_face_quads, dim)
-        physical_surface_quad_points = onp.sum(
+        physical_surface_quad_points = np.sum(
             selected_face_shape_vals[:, :, :, None] *
             selected_coos[:, None, :, :],
             axis=2)
@@ -363,14 +363,14 @@ class FEM:
 
         Returns
         -------
-        boundary_inds_list : List[onp.ndarray]
+        boundary_inds_list : List[np.ndarray]
             (num_selected_faces, 2)
             boundary_inds_list[k][i, 0] returns the global cell index of the ith selected face of boundary subset k
             boundary_inds_list[k][i, 1] returns the local face index of the ith selected face of boundary subset k
         """
-        cell_points = onp.take(self.points, self.cells,
+        cell_points = np.take(self.points, self.cells,
                                axis=0)  # (num_cells, num_nodes, dim)
-        cell_face_points = onp.take(
+        cell_face_points = np.take(
             cell_points, self.face_inds,
             axis=1)  # (num_cells, num_faces, num_face_nodes, dim)
         boundary_inds_list = []
@@ -379,11 +379,11 @@ class FEM:
 
             def on_boundary(cell_points):
                 boundary_flag = vmap_location_fn(cell_points)
-                return onp.all(boundary_flag)
+                return np.all(boundary_flag)
 
             vvmap_on_boundary = jax.vmap(jax.vmap(on_boundary))
             boundary_flags = vvmap_on_boundary(cell_face_points)
-            boundary_inds = onp.argwhere(
+            boundary_inds = np.argwhere(
                 boundary_flags)  # (num_selected_faces, 2)
             boundary_inds_list.append(boundary_inds)
         return boundary_inds_list
@@ -609,7 +609,7 @@ class FEM:
         fn = kernel_jac if jac_flag else kernel
         vmap_fn = jax.jit(jax.vmap(fn))
         kernal_vars = self.unpack_kernels_vars(**internal_vars)
-        num_cuts = 20
+        num_cuts = 1
         if num_cuts > len(self.cells):
             num_cuts = len(self.cells)
         batch_size = len(self.cells) // num_cuts
@@ -704,7 +704,7 @@ class FEM:
             selected_cells.append(self.cells[boundary_inds[:, 0]])
 
         values = np_version.vstack(values)
-        selected_cells = onp.vstack(selected_cells)
+        selected_cells = np.vstack(selected_cells)
 
         assert len(values) == len(selected_cells)
 
