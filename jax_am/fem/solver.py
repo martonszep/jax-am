@@ -200,7 +200,7 @@ def operator_to_matrix(operator_fn, problem):
 
 
 def jacobi_preconditioner(problem):
-    logger.debug(f"Compute and use jacobi preconditioner")
+    # logger.debug(f"Compute and use jacobi preconditioner")
     jacobi = np.array(problem.A_sp_scipy.diagonal())
     jacobi = assign_ones_bc(jacobi.reshape(-1), problem)
     return jacobi
@@ -246,7 +246,7 @@ def linear_incremental_solver(problem, res_vec, A_fn, dofs, precond,
                               use_petsc):
     """Lift solver
     """
-    logger.debug(f"Solving linear system with lift solver...")
+    # logger.debug(f"Solving linear system with lift solver...")
     b = -res_vec
 
     if use_petsc:
@@ -302,11 +302,11 @@ def line_search(problem, dofs, inc):
 
 
 def get_A_fn(problem, use_petsc):
-    logger.debug(f"Creating sparse matrix with jax.experimental.sparse.bcoo.BCOO ...")
+    # logger.debug(f"Creating sparse matrix with jax.experimental.sparse.bcoo.BCOO ...")
     
     # logger.debug(f"Creating sparse matrix from scipy using JAX BCOO...")
     # A_sp = BCOO.from_scipy_sparse(A_sp_scipy).sort_indices() # old approach
-    A_sp = BCOO((problem.V, np.stack((problem.I, problem.J), axis=-1, dtype=np.integer)), shape=(problem.num_total_dofs, problem.num_total_dofs)).sort_indices()
+    A_sp = BCOO((problem.V, np.stack((problem.I, problem.J), axis=-1, dtype=np.int32)), shape=(problem.num_total_dofs, problem.num_total_dofs)).sort_indices()
     # logger.info(f"Global sparse matrix takes about {A_sp.data.shape[0]*8*3/2**30} G memory to store.")
     # problem.A_sp_scipy = A_sp_scipy
 
@@ -347,9 +347,8 @@ def solver_row_elimination(problem, linear, precond, initial_guess, use_petsc):
 
     The function newton_update computes r(u) and dr/du
     """
-    logger.debug(
-        f"Calling the row elimination solver for imposing Dirichlet B.C.")
-    logger.debug("Start timing")
+    # logger.debug(f"Calling the row elimination solver for imposing Dirichlet B.C.")
+    # logger.debug("Start timing")
     start = time.time()
     sol_shape = (problem.num_total_nodes, problem.vec)
     dofs = np.zeros(sol_shape).reshape(-1)
@@ -366,9 +365,9 @@ def solver_row_elimination(problem, linear, precond, initial_guess, use_petsc):
 
         dofs = linear_incremental_solver(problem, res_vec, A_fn, dofs, precond, use_petsc)
 
-        res_vec, A_fn = newton_update_helper(dofs)
-        res_val = np.linalg.norm(res_vec)
-        logger.debug(f"Linear solve, res l_2 = {res_val}")
+        # res_vec, A_fn = newton_update_helper(dofs)
+        # res_val = np.linalg.norm(res_vec)
+        # logger.debug(f"Linear solve, res l_2 = {res_val}")
 
     else:
         if initial_guess is None:
@@ -395,8 +394,8 @@ def solver_row_elimination(problem, linear, precond, initial_guess, use_petsc):
     end = time.time()
     solve_time = end - start
     logger.info(f"Solve took {solve_time} [s]")
-    logger.debug(f"max of sol = {np.max(sol)}")
-    logger.debug(f"min of sol = {np.min(sol)}")
+    # logger.debug(f"max of sol = {np.max(sol)}")
+    # logger.debug(f"min of sol = {np.min(sol)}")
 
     return sol
 
@@ -543,7 +542,7 @@ def get_A_fn_and_res_aug(problem, dofs_aug, res_vec, p_num_eps, use_petsc):
 
     # TODO: Potential bug
     # Used only in jacobi_preconditioner
-    # problem.A_sp_scipy = A_sp_scipy_aug
+    problem.A_sp_scipy = A_sp_aug
 
     def compute_linearized_residual(dofs_aug):
         return A_sp_aug @ dofs_aug
