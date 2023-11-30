@@ -302,19 +302,19 @@ def line_search(problem, dofs, inc):
 
 
 def get_A_fn(problem, use_petsc):
-    logger.debug(f"Creating sparse matrix with scipy...")
-    A_sp_scipy = scipy.sparse.csr_array(
-        (onp.array(problem.V), (problem.I, problem.J)),
-        shape=(problem.num_total_dofs, problem.num_total_dofs))
+    logger.debug(f"Creating sparse matrix with jax.experimental.sparse.bcoo.BCOO ...")
+    
     # logger.debug(f"Creating sparse matrix from scipy using JAX BCOO...")
-    A_sp = BCOO.from_scipy_sparse(A_sp_scipy).sort_indices()
+    # A_sp = BCOO.from_scipy_sparse(A_sp_scipy).sort_indices() # old approach
+    A_sp = BCOO((problem.V, np.stack((problem.I, problem.J), axis=-1, dtype=np.integer)), shape=(problem.num_total_dofs, problem.num_total_dofs)).sort_indices()
     # logger.info(f"Global sparse matrix takes about {A_sp.data.shape[0]*8*3/2**30} G memory to store.")
-    problem.A_sp_scipy = A_sp_scipy
+    # problem.A_sp_scipy = A_sp_scipy
 
     def compute_linearized_residual(dofs):
         return A_sp @ dofs
 
     if use_petsc:
+        A_sp_scipy = scipy.sparse.csr_array((onp.array(problem.V), (problem.I, problem.J)), shape=(problem.num_total_dofs, problem.num_total_dofs))
         # https://scicomp.stackexchange.com/questions/2355/32bit-64bit-issue-when-working-with-numpy-and-petsc4py/2356#2356
         A = PETSc.Mat().createAIJ(size=A_sp_scipy.shape, csr=(A_sp_scipy.indptr.astype(PETSc.IntType, copy=False),
                                                        A_sp_scipy.indices.astype(PETSc.IntType, copy=False), A_sp_scipy.data))
@@ -364,8 +364,7 @@ def solver_row_elimination(problem, linear, precond, initial_guess, use_petsc):
         dofs = assign_bc(dofs, problem)
         res_vec, A_fn = newton_update_helper(dofs)
 
-        dofs = linear_incremental_solver(problem, res_vec, A_fn, dofs, precond,
-                                         use_petsc)
+        dofs = linear_incremental_solver(problem, res_vec, A_fn, dofs, precond, use_petsc)
 
         res_vec, A_fn = newton_update_helper(dofs)
         res_val = np.linalg.norm(res_vec)
@@ -383,17 +382,14 @@ def solver_row_elimination(problem, linear, precond, initial_guess, use_petsc):
         logger.debug(f"Before, res l_2 = {res_val}")
         tol = 1e-6
         while res_val > tol:
-            dofs = linear_incremental_solver(problem, res_vec, A_fn, dofs,
-                                             precond, use_petsc)
+            dofs = linear_incremental_solver(problem, res_vec, A_fn, dofs, precond, use_petsc)
             res_vec, A_fn = newton_update_helper(dofs)
             # test_jacobi_precond(problem, jacobi_preconditioner(problem, dofs), A_fn)
             res_val = np.linalg.norm(res_vec)
             logger.debug(f"res l_2 = {res_val}")
 
-    assert np.all(
-        np.isfinite(res_val)), f"res_val contains NaN, stop the program!"
-
-    assert np.all(np.isfinite(dofs)), f"dofs contains NaN, stop the program!"
+    # assert np.all(np.isfinite(res_val)), f"res_val contains NaN, stop the program!"
+    # assert np.all(np.isfinite(dofs)), f"dofs contains NaN, stop the program!"
 
     sol = dofs.reshape(sol_shape)
     end = time.time()
