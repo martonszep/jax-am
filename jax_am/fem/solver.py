@@ -106,7 +106,7 @@ def apply_bc(res_fn, problem):
 def row_elimination(fn, problem):
 
     def fn_dofs_row(dofs):
-        sol = dofs.reshape((problem.num_total_nodes, problem.vec))
+        sol = dofs.reshape((-1, problem.vec))
         res = fn(dofs).reshape(sol.shape)
         for i in range(len(problem.node_inds_list)):
             res = (res.at[problem.node_inds_list[i],
@@ -248,14 +248,21 @@ def linear_incremental_solver(problem, res_vec, A_fn, dofs, precond,
     """
     # logger.debug(f"Solving linear system with lift solver...")
     b = -res_vec
+    x0_1 = assign_bc(np.zeros_like(b), problem)
+    x0_2 = copy_bc(dofs, problem)
+    x0 = x0_1 - x0_2
+
+    if problem.periodic_bc_info is not None:
+        b = problem.p_prolongation_mx.transpose() @ b
+        x0 = problem.p_prolongation_mx.transpose() @ x0
 
     if use_petsc:
         inc = petsc_solve(A_fn, b, 'bcgsl', 'ilu')
     else:
-        x0_1 = assign_bc(np.zeros_like(b), problem)
-        x0_2 = copy_bc(dofs, problem)
-        x0 = x0_1 - x0_2
         inc, err = jax_solve(problem, A_fn, b, x0, precond)
+
+    if problem.periodic_bc_info is not None:
+        inc = problem.p_prolongation_mx @ inc
 
     dofs = dofs + inc
 
@@ -308,10 +315,16 @@ def get_A_fn(problem, use_petsc):
     # A_sp = BCOO.from_scipy_sparse(A_sp_scipy).sort_indices() # old approach
     A_sp = BCOO((problem.V, np.stack((problem.I, problem.J), axis=-1, dtype=np.int32)), shape=(problem.num_total_dofs, problem.num_total_dofs)).sort_indices()
     # logger.info(f"Global sparse matrix takes about {A_sp.data.shape[0]*8*3/2**30} G memory to store.")
-    # problem.A_sp_scipy = A_sp_scipy
+    problem.A_sp_scipy = A_sp
 
-    def compute_linearized_residual(dofs):
-        return A_sp @ dofs
+    if problem.periodic_bc_info is not None:
+        def compute_linearized_residual(dofs):
+            dofs = problem.p_prolongation_mx @ dofs
+            dofs = A_sp @ dofs
+            return problem.p_prolongation_mx.transpose() @ dofs
+    else:
+        def compute_linearized_residual(dofs):
+            return A_sp @ dofs
 
     if use_petsc:
         A_sp_scipy = scipy.sparse.csr_array((onp.array(problem.V), (problem.I, problem.J)), shape=(problem.num_total_dofs, problem.num_total_dofs))
@@ -543,7 +556,6 @@ def get_A_fn_and_res_aug(problem, dofs_aug, res_vec, p_num_eps, use_petsc):
     # TODO: Potential bug
     # Used only in jacobi_preconditioner
     problem.A_sp_scipy = A_sp_aug
-
     def compute_linearized_residual(dofs_aug):
         return A_sp_aug @ dofs_aug
 
@@ -826,13 +838,11 @@ def solver(problem,
     """periodic B.C. is a special form of adding a linear constraint.
     Lagrange multiplier seems to be convenient to impose this constraint.
     """
-    # TODO: print platform jax.lib.xla_bridge.get_backend().platform
-    # and suggest PETSc or jax solver
     if problem.periodic_bc_info is None:
-        return solver_row_elimination(problem, linear, precond, initial_guess,
-                                      use_petsc)
+        return solver_row_elimination(problem, linear, precond, initial_guess, use_petsc)
     else:
-        return solver_lagrange_multiplier(problem, linear, use_petsc)
+        return solver_row_elimination(problem, linear, precond, initial_guess, use_petsc) # periodic linear constraint
+        # return solver_lagrange_multiplier(problem, linear, use_petsc)
 
 
 ################################################################################

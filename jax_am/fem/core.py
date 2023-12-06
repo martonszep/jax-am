@@ -350,6 +350,21 @@ class FEM:
                 p_vec_inds_list.append(vec_inds)
                 assert len(node_inds_A) == len(node_inds_B_ordered)
 
+        indices = onp.arange(self.num_total_nodes)
+        for i in range(len(p_node_inds_list_A)):
+            for j in range(len(p_node_inds_list_A[i])):
+                indices = onp.where(indices==p_node_inds_list_B[i][j], p_node_inds_list_A[i][j], indices)
+
+        # Currently only supports scalar field
+        self.p_prolongation_mx = jax.experimental.sparse.BCOO(
+            (
+                np.ones(self.num_total_nodes, dtype=np.float32),
+                np.stack((np.arange(self.num_total_nodes), indices), axis=-1, dtype=np.int32)
+            ),
+            shape=(self.num_total_nodes, int(np.max(indices) + 1)),
+            unique_indices=True
+        ).sort_indices()
+
         return p_node_inds_list_A, p_node_inds_list_B, p_vec_inds_list
 
     def get_boundary_conditions_inds(self, location_fns):
