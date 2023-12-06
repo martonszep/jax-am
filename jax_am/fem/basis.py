@@ -87,6 +87,12 @@ def get_elements(ele_type):
         basix_face_ele = basix.CellType.interval
         gauss_order = 2 # 3, full integration
         degree = 2
+    elif  ele_type == 'LINE':
+        re_order = [0, 1]
+        basix_ele = basix.CellType.interval
+        basix_face_ele = basix.CellType.point
+        gauss_order = 0 # 3, full integration
+        degree = 1
     else:
         raise NotImplementedError
 

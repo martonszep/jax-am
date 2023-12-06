@@ -90,6 +90,8 @@ def get_meshio_cell_type(ele_type):
         cell_type = 'quad'
     elif ele_type == 'QUAD8':
         cell_type = 'quad8'
+    elif ele_type == 'LINE':
+        cell_type = 'line'
     else:
         raise NotImplementedError
     return cell_type
