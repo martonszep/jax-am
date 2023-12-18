@@ -350,18 +350,28 @@ class FEM:
                 p_vec_inds_list.append(vec_inds)
                 assert len(node_inds_A) == len(node_inds_B_ordered)
 
+        # Periodic boundary index magic
         indices = onp.arange(self.num_total_nodes)
         for i in range(len(p_node_inds_list_A)):
-            for j in range(len(p_node_inds_list_A[i])):
-                indices = onp.where(indices==p_node_inds_list_B[i][j], p_node_inds_list_A[i][j], indices)
+            # for j in range(len(p_node_inds_list_A[i])):
+            #     indices = onp.where(indices==p_node_inds_list_B[i][j], p_node_inds_list_A[i][j], indices)
+            C,R = onp.where(indices[:,None] == p_node_inds_list_B[i][None,:])
+            indices[C] = p_node_inds_list_A[i][R]
+        _, unique_idx, unique_inverse = onp.unique(indices, return_index=True, return_inverse=True)
+        # Undo onp.unique sorting
+        unsort = onp.argsort(unique_idx)
+        self.p_eliminate_dofs = indices[unique_idx[unsort]]
+        C,R = onp.where(unique_inverse[:,None] == unsort[None,:])
+        unique_inverse[C] = R       
+        self.p_add_dofs = unique_inverse
 
-        # Currently only supports scalar field
+        # TODO: Currently only supports scalar field
         self.p_prolongation_mx = jax.experimental.sparse.BCOO(
             (
-                np.ones(self.num_total_nodes, dtype=np.float32),
-                np.stack((np.arange(self.num_total_nodes), indices), axis=-1, dtype=np.int32)
+                np.ones(self.num_total_dofs, dtype=np.float32),
+                np.stack((np.arange(self.num_total_nodes), self.p_add_dofs), axis=-1, dtype=np.int32)
             ),
-            shape=(self.num_total_nodes, int(np.max(indices) + 1)),
+            shape=(self.num_total_nodes, self.p_eliminate_dofs.shape[0]),
             unique_indices=True
         ).sort_indices()
 
