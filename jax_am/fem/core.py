@@ -369,9 +369,9 @@ class FEM:
         self.p_prolongation_mx = jax.experimental.sparse.BCOO(
             (
                 np.ones(self.num_total_dofs, dtype=np.float32),
-                np.stack((np.arange(self.num_total_nodes), self.p_add_dofs), axis=-1, dtype=np.int32)
+                np.stack((np.arange(self.num_total_nodes), indices), axis=-1, dtype=np.int32)
             ),
-            shape=(self.num_total_nodes, self.p_eliminate_dofs.shape[0]),
+            shape=(self.num_total_nodes, int(indices.max())+1),
             unique_indices=True
         ).sort_indices()
 
