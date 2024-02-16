@@ -89,6 +89,7 @@ class FEM:
     neumann_bc_info: Optional[List[Union[List[Callable], List[Callable]]]] = None
     cauchy_bc_info: Optional[List[Union[List[Callable], List[Callable]]]] = None
     source_info: Callable = None
+    resolution: List[int] = None
     additional_info: Any = ()
 
     def __post_init__(self):
@@ -97,9 +98,10 @@ class FEM:
         self.num_cells = len(self.cells)
         self.num_total_nodes = len(self.mesh.points)
         self.num_total_dofs = self.num_total_nodes * self.vec
+        self.num_boundary = self.resolution
 
         start = time.time()
-        logger.debug(f"Computing shape function values, gradients, etc.")
+        # logger.debug(f"Computing shape function values, gradients, etc.")
 
         self.shape_vals, self.shape_grads_ref, self.quad_weights = get_shape_vals_and_grads(self.ele_type)
         self.face_shape_vals, self.face_shape_grads_ref, self.face_quad_weights, self.face_normals, self.face_inds \
@@ -149,23 +151,23 @@ class FEM:
 
         Returns
         -------
-        shape_grads_physical : onp.ndarray
+        shape_grads_physical : np.ndarray
             (num_cells, num_quads, num_nodes, dim)
-        JxW : onp.ndarray
+        JxW : np.ndarray
             (num_cells, num_quads)
         """
         assert self.shape_grads_ref.shape == (self.num_quads, self.num_nodes,
                                               self.dim)
-        physical_coos = onp.take(self.points, self.cells,
+        physical_coos = np.take(self.points, self.cells,
                                  axis=0)  # (num_cells, num_nodes, dim)
         # (num_cells, num_quads, num_nodes, dim, dim) -> (num_cells, num_quads, 1, dim, dim)
-        jacobian_dx_deta = onp.sum(physical_coos[:, None, :, :, None] *
+        jacobian_dx_deta = np.sum(physical_coos[:, None, :, :, None] *
                                    self.shape_grads_ref[None, :, :, None, :],
                                    axis=2,
                                    keepdims=True)
-        jacobian_det = onp.linalg.det(
+        jacobian_det = np.linalg.det(
             jacobian_dx_deta)[:, :, 0]  # (num_cells, num_quads)
-        jacobian_deta_dx = onp.linalg.inv(jacobian_dx_deta)
+        jacobian_deta_dx = np.linalg.inv(jacobian_dx_deta)
         # (1, num_quads, num_nodes, 1, dim) @ (num_cells, num_quads, 1, dim, dim)
         # (num_cells, num_quads, num_nodes, 1, dim) -> (num_cells, num_quads, num_nodes, dim)
         shape_grads_physical = (self.shape_grads_ref[None, :, :, None, :]
@@ -180,14 +182,14 @@ class FEM:
 
         Parameters
         ----------
-        boundary_inds : List[onp.ndarray]
+        boundary_inds : List[np.ndarray]
             (num_selected_faces, 2)
 
         Returns
         -------
-        face_shape_grads_physical : onp.ndarray
+        face_shape_grads_physical : np.ndarray
             (num_selected_faces, num_face_quads, num_nodes, dim)
-        nanson_scale : onp.ndarray
+        nanson_scale : np.ndarray
             (num_selected_faces, num_face_quads)
         """
         physical_coos = np.take(self.points, self.cells,
@@ -278,9 +280,9 @@ class FEM:
 
         Returns
         -------
-        node_inds_List : List[onp.ndarray]
+        node_inds_List : List[np.ndarray]
             The ndarray ranges from 0 to num_total_nodes - 1
-        vec_inds_List : List[onp.ndarray]
+        vec_inds_List : List[np.ndarray]
             The ndarray ranges from 0 to to vec - 1
         vals_List : List[ndarray]
             Dirichlet values to be assigned
@@ -293,9 +295,9 @@ class FEM:
             assert len(location_fns) == len(value_fns) and len(
                 value_fns) == len(vecs)
             for i in range(len(location_fns)):
-                node_inds = onp.argwhere(
+                node_inds = np.argwhere(
                     jax.vmap(location_fns[i])(self.mesh.points)).reshape(-1)
-                vec_inds = onp.ones_like(node_inds, dtype=onp.int32) * vecs[i]
+                vec_inds = np.ones_like(node_inds, dtype=np.int32) * vecs[i]
                 values = jax.vmap(value_fns[i])(
                     self.mesh.points[node_inds].reshape(-1,
                                                         self.dim)).reshape(-1)
@@ -322,28 +324,33 @@ class FEM:
         if self.periodic_bc_info is not None:
             location_fns_A, location_fns_B, mappings, vecs = self.periodic_bc_info
             for i in range(len(location_fns_A)):
-                node_inds_A = onp.argwhere(
-                    jax.vmap(location_fns_A[i])(self.mesh.points)).reshape(-1)
-                node_inds_B = onp.argwhere(
-                    jax.vmap(location_fns_B[i])(self.mesh.points)).reshape(-1)
-                points_set_A = self.mesh.points[node_inds_A]
-                points_set_B = self.mesh.points[node_inds_B]
+                node_inds_A = np.argwhere(
+                    jax.vmap(location_fns_A[i])(self.mesh.points),
+                    size=self.num_boundary[i]
+                ).reshape(-1)
+                node_inds_B = np.argwhere(
+                    jax.vmap(location_fns_B[i])(self.mesh.points),
+                    size=self.num_boundary[i]
+                ).reshape(-1)
+                # points_set_A = self.mesh.points[node_inds_A]
+                # points_set_B = self.mesh.points[node_inds_B]
 
-                EPS = 1e-5
-                node_inds_B_ordered = []
-                for node_ind in node_inds_A:
-                    point_A = self.mesh.points[node_ind]
-                    dist = onp.linalg.norm(mappings[i](point_A)[None, :] -
-                                           points_set_B,
-                                           axis=-1)
-                    node_ind_B_ordered = node_inds_B[onp.argwhere(
-                        dist < EPS)].reshape(-1)
-                    node_inds_B_ordered.append(node_ind_B_ordered)
+                # EPS = 1e-5
+                # node_inds_B_ordered = []
+                # for node_ind in node_inds_A:
+                #     point_A = self.mesh.points[node_ind]
+                #     dist = onp.linalg.norm(mappings[i](point_A)[None, :] -
+                #                            points_set_B,
+                #                            axis=-1)
+                #     node_ind_B_ordered = node_inds_B[onp.argwhere(
+                #         dist < EPS)].reshape(-1)
+                #     node_inds_B_ordered.append(node_ind_B_ordered)
 
-                node_inds_B_ordered = onp.array(node_inds_B_ordered).reshape(
-                    -1)
-                vec_inds = onp.ones_like(node_inds_A,
-                                         dtype=onp.int32) * vecs[i]
+                # node_inds_B_ordered = onp.array(node_inds_B_ordered).reshape(
+                #     -1)
+                node_inds_B_ordered = node_inds_B
+                vec_inds = np.ones_like(node_inds_A,
+                                         dtype=np.int32) * vecs[i]
 
                 p_node_inds_list_A.append(node_inds_A)
                 p_node_inds_list_B.append(node_inds_B_ordered)
@@ -351,27 +358,29 @@ class FEM:
                 assert len(node_inds_A) == len(node_inds_B_ordered)
 
         # Periodic boundary index magic
-        indices = onp.arange(self.num_total_nodes)
+        indices = np.arange(self.num_total_nodes)
         for i in range(len(p_node_inds_list_A)):
             # for j in range(len(p_node_inds_list_A[i])):
-            #     indices = onp.where(indices==p_node_inds_list_B[i][j], p_node_inds_list_A[i][j], indices)
-            C,R = onp.where(indices[:,None] == p_node_inds_list_B[i][None,:])
-            indices[C] = p_node_inds_list_A[i][R]
-        _, unique_idx, unique_inverse = onp.unique(indices, return_index=True, return_inverse=True)
-        # Undo onp.unique sorting
-        unsort = onp.argsort(unique_idx)
+            #     indices = np.where(indices==p_node_inds_list_B[i][j], p_node_inds_list_A[i][j], indices)
+            C,R = np.where(indices[:,None] == p_node_inds_list_B[i][None,:], size=len(p_node_inds_list_B[i]))
+            indices = indices.at[C].set(p_node_inds_list_A[i][R])
+        _, unique_idx, unique_inverse = np.unique(indices, return_index=True, return_inverse=True, size=self.num_total_nodes-(self.num_boundary.sum()-1))  # TODO: Generalize size to other dimensions than 2
+        # Undo np.unique sorting
+        unsort = np.argsort(unique_idx)
         self.p_eliminate_dofs = indices[unique_idx[unsort]]
-        C,R = onp.where(unique_inverse[:,None] == unsort[None,:])
-        unique_inverse[C] = R       
+        C,R = np.where(unique_inverse[:,None] == unsort[None,:], size=len(unique_inverse))
+        unique_inverse = unique_inverse.at[C].set(R)    
         self.p_add_dofs = unique_inverse
 
         # TODO: Currently only supports scalar field
         self.p_prolongation_mx = jax.experimental.sparse.BCOO(
             (
                 np.ones(self.num_total_dofs, dtype=np.float32),
-                np.stack((np.arange(self.num_total_nodes), indices), axis=-1, dtype=np.int32)
+                # np.stack((np.arange(self.num_total_nodes), indices), axis=-1, dtype=np.int32)
+                np.stack((np.arange(self.num_total_nodes), unique_inverse), axis=-1, dtype=np.int32)
             ),
-            shape=(self.num_total_nodes, int(indices.max())+1),
+            # shape=(len(indices), indices.max().astype(int)+1),
+            shape=(len(indices), len(self.p_eliminate_dofs)),
             unique_indices=True
         ).sort_indices()
 
@@ -829,7 +838,7 @@ class FEM:
         return res
 
     def compute_residual_vars(self, sol, **internal_vars):
-        logger.debug(f"Computing cell residual...")
+        # logger.debug(f"Computing cell residual...")
         cells_sol = sol[self.cells]  # (num_cells, num_nodes, vec)
         weak_form = self.split_and_compute_cell(
             cells_sol, np, False,
@@ -838,7 +847,7 @@ class FEM:
                                                  **internal_vars)
 
     def compute_newton_vars(self, sol, **internal_vars):
-        logger.debug(f"Computing cell Jacobian and cell residual...")
+        # logger.debug(f"Computing cell Jacobian and cell residual...")
         cells_sol = sol[self.cells]  # (num_cells, num_nodes, vec)
         # (num_cells, num_nodes, vec), (num_cells, num_nodes, vec, num_nodes, vec)
         weak_form, cells_jac = self.split_and_compute_cell(
